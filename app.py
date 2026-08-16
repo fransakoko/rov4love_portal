@@ -42,6 +42,14 @@ def init_db():
         CREATE TABLE IF NOT EXISTS documents (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, category TEXT, description TEXT, file_path TEXT, link_url TEXT, author TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
         CREATE TABLE IF NOT EXISTS decisions (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, details TEXT, decision_date TEXT, status TEXT DEFAULT 'Kabul Edildi', decision_maker TEXT);
         ''')
+        
+        # --- MEHMET (KURUCU KAPTAN) HESABINI OTOMATİK OLUŞTUR ---
+        user = db.execute("SELECT * FROM users WHERE username = 'mehmet'").fetchone()
+        if not user:
+            hashed_pw = generate_password_hash("ruhi 123")
+            db.execute("INSERT INTO users (username, password, role, status, tag) VALUES (?, ?, ?, ?, ?)", 
+                       ("mehmet", hashed_pw, "Admin", "Approved", "Kurucu Kaptan"))
+            
         db.commit()
 
 init_db()
@@ -85,17 +93,13 @@ def register():
                 flash("Bu isim zaten alınmış!", "error")
                 return redirect(url_for('register'))
             
-            user_count = db.execute("SELECT COUNT(*) as count FROM users").fetchone()["count"]
-            role = "Admin" if user_count == 0 else "User"
-            status = "Approved" if user_count == 0 else "Pending"
-            tag = "Kaptan" if user_count == 0 else "Çaylak"
-            
+            # Artık herkes standart kullanıcı ve onay bekliyor olarak kayıt olur
             hashed_pw = generate_password_hash(password)
-            db.execute("INSERT INTO users (username, password, role, status, tag) VALUES (?, ?, ?, ?, ?)", 
-                       (username, hashed_pw, role, status, tag))
+            db.execute("INSERT INTO users (username, password, role, status, tag) VALUES (?, ?, 'User', 'Pending', 'Çaylak')", 
+                       (username, hashed_pw))
             db.commit()
             
-        flash("Kayıt başarılı! Giriş yapabilirsiniz.", "success")
+        flash("Kayıt başarılı! Kaptan onayından sonra giriş yapabilirsiniz.", "success")
         return redirect(url_for('login'))
     return render_template("register.html")
 
@@ -157,10 +161,24 @@ def update_tag():
     user_id = request.form.get("user_id")
     new_tag = request.form.get("tag")
     new_role = request.form.get("role")
+    
     with get_db() as db:
+        target_user = db.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+        
+        # Sadece mehmet yetki (Admin/User) değiştirebilir
+        if new_role and new_role != target_user['role']:
+            if session.get('username') != 'mehmet':
+                flash("Erişim Reddedildi: Sadece Kurucu Kaptan yetki seviyelerini değiştirebilir!", "error")
+                new_role = target_user['role'] # Değişikliği iptal et
+                
+        # Mehmet'in kendi yetkisini yanlışlıkla düşürmesini engelle
+        if target_user['username'] == 'mehmet' and new_role != 'Admin':
+            new_role = 'Admin'
+
         db.execute("UPDATE users SET tag = ?, role = ? WHERE id = ?", (new_tag, new_role, user_id))
         db.commit()
-    flash("Kullanıcı tag/yetki bilgileri güncellendi!", "success")
+        
+    flash("Kullanıcı bilgileri güncellendi!", "success")
     return redirect(url_for('admin_panel'))
 
 # --- ANA SAYFA VE KANBAN ---
@@ -206,10 +224,6 @@ def create_task():
 @app.route("/task/update_status/<int:task_id>/<string:new_status>")
 @login_required
 def update_task_status(task_id, new_status):
-    # Test aşamasındaki URL hatasını önlemek için filtre
-    if new_status == "TEST_INCELEME":
-        new_status = "Test"
-        
     with get_db() as db:
         task = db.execute("SELECT title FROM tasks WHERE id = ?", (task_id,)).fetchone()
         if task:
