@@ -203,3 +203,91 @@ def chat(channel="genel"):
 
 # Wiki, Görev Ekleme, Karar Ekleme kısımları kodun çok uzamaması için aynı mantıkla kalabilir. 
 # (Yüklerken sadece @login_required tagını o fonksiyonların üstüne eklemeyi unutma).
+# --- WIKI, KARAR DEFTERİ VE GÖREV (TASK) YÖNETİMİ ---
+
+@app.route("/wiki")
+@login_required
+def wiki():
+    with get_db() as db:
+        docs = db.execute("SELECT * FROM documents ORDER BY created_at DESC").fetchall()
+    return render_template("wiki.html", docs=docs)
+
+@app.route("/wiki/upload", methods=["POST"])
+@login_required
+def upload_wiki():
+    title = request.form.get("title")
+    category = request.form.get("category")
+    description = request.form.get("description")
+    link_url = request.form.get("link_url")
+    
+    file = request.files.get("doc_file")
+    file_path = None
+    if file and file.filename != "":
+        fname = secure_filename(file.filename)
+        file.save(os.path.join(app.config["UPLOAD_FOLDER"], fname))
+        file_path = fname
+        
+    with get_db() as db:
+        db.execute("INSERT INTO documents (title, category, description, file_path, link_url, author) VALUES (?, ?, ?, ?, ?, ?)",
+            (title, category, description, file_path, link_url, session.get('username')))
+        db.commit()
+    log_activity(session.get('username'), f"'{title}' başlıklı teknik dokümanı ekledi.")
+    flash("Doküman/Link başarıyla eklendi!", "success")
+    return redirect(url_for("wiki"))
+
+@app.route("/uploads/<filename>")
+@login_required
+def uploaded_file(filename):
+    return send_from_directory(app.config["UPLOAD_FOLDER"], filename)
+
+@app.route("/decisions")
+@login_required
+def decisions():
+    with get_db() as db:
+        decision_list = db.execute("SELECT * FROM decisions ORDER BY id DESC").fetchall()
+    return render_template("decisions.html", decisions=decision_list)
+
+@app.route("/decisions/create", methods=["POST"])
+@login_required
+@admin_required
+def create_decision():
+    title = request.form.get("title")
+    details = request.form.get("details")
+    decision_date = request.form.get("decision_date", datetime.now().strftime("%Y-%m-%d"))
+    
+    with get_db() as db:
+        db.execute("INSERT INTO decisions (title, details, decision_date, decision_maker) VALUES (?, ?, ?, ?)",
+            (title, details, decision_date, session.get('username')))
+        db.commit()
+    log_activity(session.get('username'), f"Karar defterine işlendi: '{title}'")
+    flash("Karar defterine başarıyla eklendi!", "success")
+    return redirect(url_for("decisions"))
+
+@app.route("/task/create", methods=["POST"])
+@login_required
+def create_task():
+    title = request.form.get("title")
+    description = request.form.get("description")
+    assignee = request.form.get("assignee")
+    subsystem = request.form.get("subsystem")
+    priority = request.form.get("priority")
+    deadline = request.form.get("deadline")
+    
+    with get_db() as db:
+        db.execute("INSERT INTO tasks (title, description, assignee, subsystem, priority, deadline) VALUES (?, ?, ?, ?, ?, ?)",
+            (title, description, assignee, subsystem, priority, deadline))
+        db.commit()
+    log_activity(session.get('username'), f"'{title}' görevini oluşturdu.")
+    flash("Görev başarıyla oluşturuldu!", "success")
+    return redirect(request.referrer or url_for("kanban"))
+
+@app.route("/task/update_status/<int:task_id>/<string:new_status>")
+@login_required
+def update_task_status(task_id, new_status):
+    with get_db() as db:
+        task = db.execute("SELECT title FROM tasks WHERE id = ?", (task_id,)).fetchone()
+        if task:
+            db.execute("UPDATE tasks SET status = ? WHERE id = ?", (new_status, task_id))
+            db.commit()
+            log_activity(session.get('username'), f"'{task['title']}' durumunu '{new_status}' olarak güncelledi.")
+    return redirect(request.referrer or url_for("kanban"))
