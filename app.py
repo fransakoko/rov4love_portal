@@ -10,6 +10,11 @@ app = Flask(__name__)
 app.secret_key = "rov4love_kaptan_secret_key"
 UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), "uploads")
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
+
+# Uploads klasörü yoksa oluştur
+if not os.path.exists(UPLOAD_FOLDER):
+    os.makedirs(UPLOAD_FOLDER)
+
 DB_PATH = os.path.join(os.path.dirname(__file__), "rov4love.db")
 
 def get_db():
@@ -19,7 +24,7 @@ def get_db():
 
 def init_db():
     with get_db() as db:
-        # Yeni Kullanıcı Tablosu
+        # Kullanıcı Tablosu
         db.execute('''
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -29,7 +34,7 @@ def init_db():
             status TEXT DEFAULT 'Pending', 
             tag TEXT DEFAULT 'Çaylak'
         )''')
-        # Eski tablolar...
+        # Diğer Tablolar
         db.executescript('''
         CREATE TABLE IF NOT EXISTS activities (id INTEGER PRIMARY KEY AUTOINCREMENT, user_name TEXT, action TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP);
         CREATE TABLE IF NOT EXISTS tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, description TEXT, assignee TEXT, subsystem TEXT, priority TEXT, status TEXT DEFAULT 'Yapılacak', deadline TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
@@ -80,7 +85,6 @@ def register():
                 flash("Bu isim zaten alınmış!", "error")
                 return redirect(url_for('register'))
             
-            # İlk kayıt olan kişi otomatik Admin ve Onaylı olur (Kaptan mekanizması)
             user_count = db.execute("SELECT COUNT(*) as count FROM users").fetchone()["count"]
             role = "Admin" if user_count == 0 else "User"
             status = "Approved" if user_count == 0 else "Pending"
@@ -159,7 +163,7 @@ def update_tag():
     flash("Kullanıcı tag/yetki bilgileri güncellendi!", "success")
     return redirect(url_for('admin_panel'))
 
-# --- MEVCUT SAYFALAR (login_required eklendi) ---
+# --- ANA SAYFA VE KANBAN ---
 @app.route("/")
 @login_required
 def index():
@@ -181,30 +185,86 @@ def kanban():
         tasks = db.execute("SELECT * FROM tasks ORDER BY id DESC").fetchall()
     return render_template("kanban.html", tasks=tasks)
 
-@app.route("/chat", methods=["GET", "POST"])
-@app.route("/chat/<string:channel>", methods=["GET", "POST"])
+@app.route("/task/create", methods=["POST"])
 @login_required
-def chat(channel="genel"):
-    valid_channels = ["genel", "yazilim", "elektronik", "mekanik"]
-    if channel not in valid_channels: channel = "genel"
+def create_task():
+    title = request.form.get("title")
+    description = request.form.get("description")
+    assignee = request.form.get("assignee")
+    subsystem = request.form.get("subsystem")
+    priority = request.form.get("priority")
+    deadline = request.form.get("deadline")
     
+    with get_db() as db:
+        db.execute("INSERT INTO tasks (title, description, assignee, subsystem, priority, deadline) VALUES (?, ?, ?, ?, ?, ?)",
+            (title, description, assignee, subsystem, priority, deadline))
+        db.commit()
+    log_activity(session.get('username'), f"'{title}' görevini oluşturdu.")
+    flash("Görev başarıyla oluşturuldu!", "success")
+    return redirect(request.referrer or url_for("kanban"))
+
+@app.route("/task/update_status/<int:task_id>/<string:new_status>")
+@login_required
+def update_task_status(task_id, new_status):
+    # Test aşamasındaki URL hatasını önlemek için filtre
+    if new_status == "TEST_INCELEME":
+        new_status = "Test"
+        
+    with get_db() as db:
+        task = db.execute("SELECT title FROM tasks WHERE id = ?", (task_id,)).fetchone()
+        if task:
+            db.execute("UPDATE tasks SET status = ? WHERE id = ?", (new_status, task_id))
+            db.commit()
+            log_activity(session.get('username'), f"'{task['title']}' durumunu '{new_status}' olarak güncelledi.")
+    return redirect(request.referrer or url_for("kanban"))
+
+# --- SOHBET (CHAT) SİSTEMİ ---
+@app.route("/chat", methods=["GET", "POST"])
+@login_required
+def chat():
+    active_channel = request.args.get("channel", "genel")
+    target_dm = request.args.get("dm", None)
+    
+    with get_db() as db:
+        # Kişisel mesajlar için diğer kullanıcıları çek
+        users = db.execute("SELECT username, tag FROM users WHERE username != ?", (session['username'],)).fetchall()
+        
+        if target_dm:
+            # İki kullanıcı arasında alfabetik sıraya göre benzersiz bir oda adı oluştur
+            u_list = sorted([session['username'], target_dm])
+            room = f"dm_{u_list[0]}_{u_list[1]}"
+            current_target = target_dm
+        else:
+            room = active_channel
+            current_target = None
+            
+        messages = db.execute("SELECT * FROM messages WHERE channel = ? ORDER BY timestamp ASC", (room,)).fetchall()
+
     if request.method == "POST":
         content = request.form.get("content", "").strip()
+        dest_room = request.form.get("room", room)
         if content:
             with get_db() as db:
                 db.execute("INSERT INTO messages (channel, user_name, tag, content) VALUES (?, ?, ?, ?)", 
-                           (channel, session['username'], session['tag'], content))
+                           (dest_room, session['username'], session['tag'], content))
                 db.commit()
-            return redirect(url_for("chat", channel=channel))
             
-    with get_db() as db:
-        messages = db.execute("SELECT * FROM messages WHERE channel = ? ORDER BY timestamp ASC", (channel,)).fetchall()
-    return render_template("chat.html", channel=channel, messages=messages)
+            # Yönlendirmeyi doğru yere yap
+            if dest_room.startswith("dm_"):
+                parts = dest_room.split("_")
+                other = parts[1] if parts[1] != session['username'] else parts[2]
+                return redirect(url_for('chat', dm=other))
+            else:
+                return redirect(url_for('chat', channel=dest_room))
+                
+    return render_template("chat.html", 
+                           messages=messages, 
+                           active_channel=active_channel, 
+                           target_dm=current_target, 
+                           users=users,
+                           current_room=room)
 
-# Wiki, Görev Ekleme, Karar Ekleme kısımları kodun çok uzamaması için aynı mantıkla kalabilir. 
-# (Yüklerken sadece @login_required tagını o fonksiyonların üstüne eklemeyi unutma).
-# --- WIKI, KARAR DEFTERİ VE GÖREV (TASK) YÖNETİMİ ---
-
+# --- DOKÜMAN / WIKI SİSTEMİ ---
 @app.route("/wiki")
 @login_required
 def wiki():
@@ -240,6 +300,7 @@ def upload_wiki():
 def uploaded_file(filename):
     return send_from_directory(app.config["UPLOAD_FOLDER"], filename)
 
+# --- KARAR DEFTERİ ---
 @app.route("/decisions")
 @login_required
 def decisions():
@@ -263,31 +324,5 @@ def create_decision():
     flash("Karar defterine başarıyla eklendi!", "success")
     return redirect(url_for("decisions"))
 
-@app.route("/task/create", methods=["POST"])
-@login_required
-def create_task():
-    title = request.form.get("title")
-    description = request.form.get("description")
-    assignee = request.form.get("assignee")
-    subsystem = request.form.get("subsystem")
-    priority = request.form.get("priority")
-    deadline = request.form.get("deadline")
-    
-    with get_db() as db:
-        db.execute("INSERT INTO tasks (title, description, assignee, subsystem, priority, deadline) VALUES (?, ?, ?, ?, ?, ?)",
-            (title, description, assignee, subsystem, priority, deadline))
-        db.commit()
-    log_activity(session.get('username'), f"'{title}' görevini oluşturdu.")
-    flash("Görev başarıyla oluşturuldu!", "success")
-    return redirect(request.referrer or url_for("kanban"))
-
-@app.route("/task/update_status/<int:task_id>/<string:new_status>")
-@login_required
-def update_task_status(task_id, new_status):
-    with get_db() as db:
-        task = db.execute("SELECT title FROM tasks WHERE id = ?", (task_id,)).fetchone()
-        if task:
-            db.execute("UPDATE tasks SET status = ? WHERE id = ?", (new_status, task_id))
-            db.commit()
-            log_activity(session.get('username'), f"'{task['title']}' durumunu '{new_status}' olarak güncelledi.")
-    return redirect(request.referrer or url_for("kanban"))
+if __name__ == "__main__":
+    app.run(debug=True, host='0.0.0.0', port=5000)
