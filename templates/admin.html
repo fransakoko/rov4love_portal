@@ -5,9 +5,22 @@
     <p class="text-sm text-slate-400 mt-1">Takım üyeleri, yetkilendirme ve sistem onayları.</p>
 </div>
 
-<div class="glass-panel p-5 rounded-xl border border-ocean-700">
-    <table class="w-full text-left text-sm text-slate-300">
-        <thead class="text-xs uppercase bg-ocean-800/50 text-cyan-400">
+<!-- Hata/Başarı Mesajları -->
+{% with messages = get_flashed_messages(category_filter=["success", "error"]) %}
+    {% if messages %}
+    <div class="mb-4">
+        {% for msg in messages %}
+        <div class="bg-ocean-800/80 border border-cyan-500/50 text-cyan-300 p-3 rounded text-sm font-semibold">
+            {{ msg }}
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+{% endwith %}
+
+<div class="glass-panel p-5 rounded-xl border border-ocean-700 overflow-x-auto">
+    <table class="w-full text-left text-sm text-slate-300 min-w-[600px]">
+        <thead class="text-xs uppercase bg-ocean-800/50 text-cyan-400 border-b border-ocean-700">
             <tr>
                 <th class="px-4 py-3">Mürettebat</th>
                 <th class="px-4 py-3">Durum</th>
@@ -16,26 +29,47 @@
         </thead>
         <tbody>
             {% for user in users %}
-            <tr class="border-b border-ocean-700">
-                <td class="px-4 py-3 font-bold text-white">{{ user.username }} 
-                    <span class="block text-[10px] text-slate-500 font-mono">{{ user.role }} | {{ user.tag }}</span>
+            <tr class="border-b border-ocean-700/50 hover:bg-ocean-800/30 transition">
+                <td class="px-4 py-3 font-bold text-white">
+                    <i class="fa-solid fa-user text-cyan-500 mr-2"></i>{{ user.username }} 
+                    <span class="block text-[10px] text-slate-500 font-mono mt-1">
+                        <span class="bg-ocean-900 px-1.5 py-0.5 rounded border border-ocean-700">{{ user.role }}</span> | 
+                        <span class="text-cyan-400">{{ user.tag }}</span>
+                    </span>
                 </td>
                 <td class="px-4 py-3">
                     {% if user.status == 'Pending' %}
-                    <a href="{{ url_for('approve_user', user_id=user.id) }}" class="bg-rose-500/20 text-rose-400 border border-rose-500/30 px-2 py-1 rounded text-xs hover:bg-rose-500 hover:text-white transition">Onay Bekliyor (Tıkla)</a>
+                    <a href="{{ url_for('approve_user', user_id=user.id) }}" class="inline-block bg-rose-500/20 text-rose-400 border border-rose-500/30 px-3 py-1.5 rounded text-xs hover:bg-rose-500 hover:text-white transition shadow-[0_0_10px_rgba(244,63,94,0.2)]">
+                        <i class="fa-solid fa-clock mr-1"></i> Onay Bekliyor (Tıkla)
+                    </a>
                     {% else %}
-                    <span class="text-emerald-400 text-xs"><i class="fa-solid fa-check"></i> Onaylı</span>
+                    <span class="inline-block bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-3 py-1.5 rounded text-xs">
+                        <i class="fa-solid fa-check mr-1"></i> Onaylı
+                    </span>
                     {% endif %}
                 </td>
                 <td class="px-4 py-3">
-                    <form action="{{ url_for('update_tag') }}" method="POST" class="flex gap-2">
+                    <form action="{{ url_for('update_tag') }}" method="POST" class="flex items-center gap-2">
                         <input type="hidden" name="user_id" value="{{ user.id }}">
-                        <input type="text" name="tag" value="{{ user.tag }}" class="w-24 bg-ocean-900 border border-ocean-700 rounded p-1 text-xs text-white">
-                        <select name="role" class="bg-ocean-900 border border-ocean-700 rounded p-1 text-xs text-white">
+                        
+                        <!-- Birim (Tag) Güncelleme -->
+                        <input type="text" name="tag" value="{{ user.tag }}" placeholder="Birim/Tag" class="w-28 bg-ocean-900 border border-ocean-700 rounded-lg p-2 text-xs text-white focus:border-cyan-500 outline-none">
+                        
+                        <!-- SADECE MEHMET İÇİN ROL SEÇME MENÜSÜ -->
+                        {% if session.get('username') == 'mehmet' %}
+                        <select name="role" class="bg-ocean-900 border border-ocean-700 rounded-lg p-2 text-xs text-white focus:border-cyan-500 outline-none">
                             <option value="User" {% if user.role == 'User' %}selected{% endif %}>User</option>
                             <option value="Admin" {% if user.role == 'Admin' %}selected{% endif %}>Admin</option>
                         </select>
-                        <button type="submit" class="bg-cyan-600 hover:bg-cyan-500 text-white px-2 py-1 rounded text-xs">Kaydet</button>
+                        {% else %}
+                        <!-- Mehmet değilse sadece rolü yazıyla görsün, değiştiremesin -->
+                        <input type="hidden" name="role" value="{{ user.role }}">
+                        <span class="bg-ocean-900 border border-ocean-700 rounded-lg p-2 text-xs text-slate-400 w-20 text-center inline-block cursor-not-allowed" title="Sadece Kurucu Kaptan değiştirebilir">{{ user.role }}</span>
+                        {% endif %}
+                        
+                        <button type="submit" class="bg-cyan-600 hover:bg-cyan-500 text-white px-3 py-2 rounded-lg text-xs font-bold transition flex items-center gap-1 shadow-lg shadow-cyan-500/20">
+                            <i class="fa-solid fa-floppy-disk"></i>
+                        </button>
                     </form>
                 </td>
             </tr>
