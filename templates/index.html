@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <!-- Left Column: Stats & Dashboard -->
+    <div class="lg:col-span-2 space-y-6">
+        
+        <!-- Stats Grid -->
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div class="glass-panel p-4 rounded-xl border border-ocean-700 relative overflow-hidden">
+                <div class="absolute -right-4 -top-4 w-16 h-16 bg-blue-500/10 rounded-full blur-xl"></div>
+                <h3 class="text-xs text-slate-400 font-semibold uppercase tracking-wider">Toplam Görev</h3>
+                <p class="text-3xl font-black text-white mt-1">{{ stats.total }}</p>
+            </div>
+            <div class="glass-panel p-4 rounded-xl border border-ocean-700 relative overflow-hidden">
+                <div class="absolute -right-4 -top-4 w-16 h-16 bg-cyan-500/10 rounded-full blur-xl"></div>
+                <h3 class="text-xs text-slate-400 font-semibold uppercase tracking-wider">Devam Eden</h3>
+                <p class="text-3xl font-black text-cyan-400 mt-1">{{ stats.in_progress }}</p>
+            </div>
+            <div class="glass-panel p-4 rounded-xl border border-ocean-700 relative overflow-hidden">
+                <div class="absolute -right-4 -top-4 w-16 h-16 bg-rose-500/10 rounded-full blur-xl"></div>
+                <h3 class="text-xs text-slate-400 font-semibold uppercase tracking-wider">Acil (Bekleyen)</h3>
+                <p class="text-3xl font-black text-rose-400 mt-1">{{ stats.urgent }}</p>
+            </div>
+            <div class="glass-panel p-4 rounded-xl border border-ocean-700 relative overflow-hidden">
+                <div class="absolute -right-4 -top-4 w-16 h-16 bg-emerald-500/10 rounded-full blur-xl"></div>
+                <h3 class="text-xs text-slate-400 font-semibold uppercase tracking-wider">Tamamlanan</h3>
+                <p class="text-3xl font-black text-emerald-400 mt-1">{{ stats.completed }}</p>
+            </div>
+        </div>
+
+        <!-- System Overview / Quick Tasks -->
+        <div class="glass-panel rounded-xl border border-ocean-700 p-5">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-lg font-bold text-white"><i class="fa-solid fa-list-check text-cyan-400 mr-2"></i>Aktif Kritik Görevler</h2>
+                <a href="{{ url_for('kanban') }}" class="text-xs text-cyan-400 hover:text-cyan-300">Tümünü Gör &rarr;</a>
+            </div>
+            <div class="space-y-3">
+                {% for task in tasks[:4] %}
+                <div class="flex items-center justify-between p-3 rounded-lg bg-ocean-800/50 border border-ocean-700/50 hover:border-cyan-500/30 transition">
+                    <div class="flex items-center space-x-3">
+                        {% if task.status == 'Tamamlandı' %}
+                            <i class="fa-solid fa-circle-check text-emerald-500"></i>
+                        {% elif task.status == 'Devam Ediyor' %}
+                            <i class="fa-solid fa-spinner fa-spin text-cyan-400"></i>
+                        {% else %}
+                            <i class="fa-regular fa-circle text-slate-500"></i>
+                        {% endif %}
+                        <div>
+                            <p class="text-sm font-semibold text-slate-200">{{ task.title }}</p>
+                            <p class="text-xs text-slate-400">{{ task.assignee }} &bull; Deadline: {{ task.deadline }}</p>
+                        </div>
+                    </div>
+                    {% if task.priority == 'Acil' %}
+                    <span class="px-2 py-1 text-[10px] uppercase font-bold rounded bg-rose-500/20 text-rose-400 border border-rose-500/20">Acil</span>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Right Column: Activity Feed -->
+    <div class="glass-panel rounded-xl border border-ocean-700 p-5 flex flex-col h-full">
+        <h2 class="text-lg font-bold text-white mb-4"><i class="fa-solid fa-bolt text-cyan-400 mr-2"></i>Sistem Logları & Aktivite</h2>
+        
+        <div class="flex-grow overflow-y-auto pr-2 space-y-4 relative before:absolute before:inset-0 before:ml-2 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-ocean-600 before:to-transparent">
+            {% for act in activities %}
+            <div class="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group is-active">
+                <div class="flex items-center justify-center w-5 h-5 rounded-full border border-cyan-500 bg-ocean-900 shadow shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2 z-10">
+                    <div class="w-2 h-2 bg-cyan-400 rounded-full"></div>
+                </div>
+                <div class="w-[calc(100%-2.5rem)] md:w-[calc(50%-1.5rem)] p-3 rounded-lg bg-ocean-800/40 border border-ocean-700 shadow text-sm">
+                    <span class="font-bold text-cyan-300 text-xs">{{ act.user_name }}</span>
+                    <p class="text-slate-300 mt-1 text-xs">{{ act.action }}</p>
+                    <time class="block mt-2 text-[10px] text-slate-500 font-mono">{{ act.timestamp[11:16] }}</time>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endblock %}

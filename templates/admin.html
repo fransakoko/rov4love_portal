@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="mb-6">
+    <h1 class="text-2xl font-black text-white">Kaptan Köşkü <i class="fa-solid fa-anchor text-cyan-400"></i></h1>
+    <p class="text-sm text-slate-400 mt-1">Takım üyeleri, yetkilendirme ve sistem onayları.</p>
+</div>
+
+<div class="glass-panel p-5 rounded-xl border border-ocean-700">
+    <table class="w-full text-left text-sm text-slate-300">
+        <thead class="text-xs uppercase bg-ocean-800/50 text-cyan-400">
+            <tr>
+                <th class="px-4 py-3">Mürettebat</th>
+                <th class="px-4 py-3">Durum</th>
+                <th class="px-4 py-3">Tag & Rütbe Güncelle</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for user in users %}
+            <tr class="border-b border-ocean-700">
+                <td class="px-4 py-3 font-bold text-white">{{ user.username }} 
+                    <span class="block text-[10px] text-slate-500 font-mono">{{ user.role }} | {{ user.tag }}</span>
+                </td>
+                <td class="px-4 py-3">
+                    {% if user.status == 'Pending' %}
+                    <a href="{{ url_for('approve_user', user_id=user.id) }}" class="bg-rose-500/20 text-rose-400 border border-rose-500/30 px-2 py-1 rounded text-xs hover:bg-rose-500 hover:text-white transition">Onay Bekliyor (Tıkla)</a>
+                    {% else %}
+                    <span class="text-emerald-400 text-xs"><i class="fa-solid fa-check"></i> Onaylı</span>
+                    {% endif %}
+                </td>
+                <td class="px-4 py-3">
+                    <form action="{{ url_for('update_tag') }}" method="POST" class="flex gap-2">
+                        <input type="hidden" name="user_id" value="{{ user.id }}">
+                        <input type="text" name="tag" value="{{ user.tag }}" class="w-24 bg-ocean-900 border border-ocean-700 rounded p-1 text-xs text-white">
+                        <select name="role" class="bg-ocean-900 border border-ocean-700 rounded p-1 text-xs text-white">
+                            <option value="User" {% if user.role == 'User' %}selected{% endif %}>User</option>
+                            <option value="Admin" {% if user.role == 'Admin' %}selected{% endif %}>Admin</option>
+                        </select>
+                        <button type="submit" class="bg-cyan-600 hover:bg-cyan-500 text-white px-2 py-1 rounded text-xs">Kaydet</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}
